@@ -120,3 +120,144 @@ export function cleanupMessages(messages: UIMessage[]): UIMessage[] {
     return !hasIncompleteToolCall;
   });
 }
+
+/**
+ * Task frequency parsing and calculation utilities
+ */
+
+export type Task = {
+  id: string;
+  name: string;
+  frequency: string; // e.g., "7 days", "2 weeks", "1 month", "30 days"
+  lastCompleted?: Date;
+  createdAt: Date;
+};
+
+/**
+ * Parse frequency strings like "7 days", "2 weeks", "1 month", "30 minutes", "2 hours", "1 second" and convert to days
+ * @param frequency - Frequency string in format "X second/seconds", "X minute/minutes", "X hour/hours", "X day/days", "X week/weeks", or "X month/months"
+ * @returns Number of days (fractional for smaller units)
+ * @throws Error if frequency format is invalid
+ */
+export function parseFrequencyToDays(frequency: string): number {
+  // Handle "every X" format by removing "every"
+  const normalizedFrequency = frequency.replace(/^every\s+/i, "").trim();
+  
+  const match = normalizedFrequency.match(
+    /^(\d+)\s*(second|seconds|minute|minutes|hour|hours|day|days|week|weeks|month|months)$/i
+  );
+  if (!match) {
+    throw new Error(
+      `Invalid frequency format: ${frequency}. Use format like "1 second", "30 minutes", "2 hours", "7 days", or "2 weeks"`
+    );
+  }
+
+  const value = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+
+  // Convert to days (fractional for smaller units)
+  switch (unit) {
+    case "second":
+    case "seconds":
+      return value / (24 * 60 * 60); // Convert seconds to fractional days
+    case "minute":
+    case "minutes":
+      return value / (24 * 60); // Convert minutes to fractional days
+    case "hour":
+    case "hours":
+      return value / 24; // Convert hours to fractional days
+    case "day":
+    case "days":
+      return value;
+    case "week":
+    case "weeks":
+      return value * 7;
+    case "month":
+    case "months":
+      return value * 30; // Approximate
+    default:
+      throw new Error(`Unsupported frequency unit: ${unit}`);
+  }
+}
+
+/**
+ * Parse frequency strings and convert to milliseconds
+ * @param frequency - Frequency string in format "X second/seconds", "X minute/minutes", "X hour/hours", "X day/days", "X week/weeks", or "X month/months"
+ * @returns Number of milliseconds
+ * @throws Error if frequency format is invalid
+ */
+export function parseFrequencyToMilliseconds(frequency: string): number {
+  // Handle "every X" format by removing "every"
+  const normalizedFrequency = frequency.replace(/^every\s+/i, "").trim();
+  
+  const match = normalizedFrequency.match(
+    /^(\d+)\s*(second|seconds|minute|minutes|hour|hours|day|days|week|weeks|month|months)$/i
+  );
+  if (!match) {
+    throw new Error(
+      `Invalid frequency format: ${frequency}. Use format like "1 second", "30 minutes", "2 hours", "7 days", or "2 weeks"`
+    );
+  }
+
+  const value = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+
+  // Convert directly to milliseconds for accuracy
+  switch (unit) {
+    case "second":
+    case "seconds":
+      return value * 1000; // seconds to milliseconds
+    case "minute":
+    case "minutes":
+      return value * 60 * 1000; // minutes to milliseconds
+    case "hour":
+    case "hours":
+      return value * 60 * 60 * 1000; // hours to milliseconds
+    case "day":
+    case "days":
+      return value * 24 * 60 * 60 * 1000; // days to milliseconds
+    case "week":
+    case "weeks":
+      return value * 7 * 24 * 60 * 60 * 1000; // weeks to milliseconds
+    case "month":
+    case "months":
+      return value * 30 * 24 * 60 * 60 * 1000; // months to milliseconds (approximate)
+    default:
+      throw new Error(`Unsupported frequency unit: ${unit}`);
+  }
+}
+
+/**
+ * Check if a task is due based on its frequency and lastCompleted date
+ * @param task - Task object with frequency, lastCompleted, and createdAt
+ * @returns true if the task is due, false otherwise
+ */
+export function isTaskDue(task: {
+  lastCompleted?: Date;
+  frequency: string;
+  createdAt: Date;
+}): boolean {
+  const frequencyMs = parseFrequencyToMilliseconds(task.frequency);
+  const referenceDate = task.lastCompleted || task.createdAt;
+  const timeSinceReference = Date.now() - referenceDate.getTime();
+  return timeSinceReference >= frequencyMs;
+}
+
+/**
+ * Calculate how many days overdue a task is (or 0 if not overdue)
+ * @param task - Task object with frequency, lastCompleted, and createdAt
+ * @returns Number of days overdue (negative if not yet due)
+ */
+export function getDaysOverdue(task: {
+  lastCompleted?: Date;
+  frequency: string;
+  createdAt: Date;
+}): number {
+  const frequencyMs = parseFrequencyToMilliseconds(task.frequency);
+  const referenceDate = task.lastCompleted || task.createdAt;
+  const timeSinceReference = Date.now() - referenceDate.getTime();
+  const daysOverdue = Math.floor(
+    (timeSinceReference - frequencyMs) / (1000 * 60 * 60 * 24)
+  );
+  return daysOverdue;
+}

@@ -1,32 +1,48 @@
-# 🤖 Chat Agent Starter Kit
+# Task Reminder Agent
 
-![npm i agents command](./npm-agents-banner.svg)
+A Cloudflare Workers-based AI chat agent for managing periodic tasks and reminders. Built with Cloudflare Agents, Workers AI, and React, this application provides an intelligent assistant that helps users create, track, and manage recurring tasks with flexible scheduling options.
 
-<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/agents-starter"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"/></a>
+## Live Demo
 
-A starter template for building AI-powered chat agents using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs.com/package/agents). This project provides a foundation for creating interactive chat experiences with AI, complete with a modern UI and tool integration capabilities.
+The application is deployed and available at: **[https://taskreminderagent.nihalshetty2001.workers.dev/](https://taskreminderagent.nihalshetty2001.workers.dev/)**
 
 ## Features
 
-- 💬 Interactive chat interface with AI
-- 🛠️ Built-in tool system with human-in-the-loop confirmation
-- 📅 Advanced task scheduling (one-time, delayed, and recurring via cron)
-- 🌓 Dark/Light theme support
-- ⚡️ Real-time streaming responses
-- 🔄 State management and chat history
-- 🎨 Modern, responsive UI
+- **Interactive AI Chat Interface**: Natural language conversation with an AI assistant powered by Cloudflare Workers AI (Llama 3.3 70B)
+- **Flexible Task Scheduling**: Create tasks with frequencies ranging from seconds to months (e.g., "every second", "30 minutes", "7 days", "2 weeks")
+- **Automatic Task Checking**: Tasks are automatically checked every 30 minutes for due items
+- **Intelligent Reminders**: Multi-level reminder system with escalation (initial → follow-up → urgent)
+- **Task Management Tools**: Add, list, check due tasks, mark complete, delete individual tasks, or clear all tasks
+- **Real-time Streaming**: Live streaming responses for immediate feedback
+- **State Persistence**: Tasks and chat history persist across sessions using Durable Objects
+- **Workflow Integration**: Uses Cloudflare Workflows for reliable batch processing and reminder delivery
+- **Dark/Light Theme**: Toggle between dark and light themes
+- **Modern UI**: Responsive React-based interface with markdown support
+
+## Architecture
+
+This project is built on Cloudflare's edge computing platform:
+
+- **Cloudflare Workers**: Serverless runtime for the agent logic
+- **Durable Objects**: Stateful storage for chat history and task data
+- **Workers AI**: AI inference using Llama 3.3 70B model
+- **Cloudflare Workflows**: Orchestration for batch task processing and reminder escalation
+- **React**: Frontend UI framework
+- **Vite**: Build tool and development server
 
 ## Prerequisites
 
+- Node.js 18+ and npm
 - Cloudflare account
-- OpenAI API key
+- Cloudflare Workers AI access (enabled by default for Workers)
 
-## Quick Start
+## Installation
 
-1. Create a new project:
+1. Clone the repository:
 
 ```bash
-npx create-cloudflare@latest --template cloudflare/agents-starter
+git clone <repository-url>
+cd cf_ai_task-reminder-agent
 ```
 
 2. Install dependencies:
@@ -35,203 +51,357 @@ npx create-cloudflare@latest --template cloudflare/agents-starter
 npm install
 ```
 
-3. Set up your environment:
+3. Generate TypeScript types for Cloudflare bindings:
 
-Create a `.dev.vars` file:
-
-```env
-OPENAI_API_KEY=your_openai_api_key
+```bash
+npm run types
 ```
 
-4. Run locally:
+## Configuration
+
+### Local Development
+
+No environment variables are required for local development. The Workers AI binding is configured automatically through `wrangler.jsonc`.
+
+### Production Deployment
+
+Ensure your Cloudflare account has:
+- Workers AI enabled
+- Durable Objects enabled
+- Workflows enabled
+
+The configuration is managed through `wrangler.jsonc`:
+
+- **AI Binding**: Configured to use Workers AI with remote inference
+- **Durable Objects**: Chat agent state is stored in a Durable Object
+- **Workflows**: Two workflows are configured for task reminder processing
+
+## Running Locally
+
+Start the development server:
 
 ```bash
 npm start
 ```
 
-5. Deploy:
+This will:
+- Start the Vite development server
+- Run the Cloudflare Worker locally using Wrangler
+- Open the application in your browser (typically at `http://localhost:8788`)
+
+The local development environment includes:
+- Hot module reloading for frontend changes
+- Local Durable Objects storage
+- Local Workers AI inference (if available) or remote inference
+- Full debugging capabilities
+
+## Deployment
+
+Deploy to Cloudflare Workers:
 
 ```bash
 npm run deploy
 ```
 
+This command will:
+1. Build the frontend assets and worker code
+2. Deploy to Cloudflare Workers
+3. Set up Durable Objects migrations
+4. Configure Workflows
+
+After deployment, you'll receive a URL where your agent is accessible.
+
 ## Project Structure
 
 ```
 ├── src/
-│   ├── app.tsx        # Chat UI implementation
-│   ├── server.ts      # Chat agent logic
-│   ├── tools.ts       # Tool definitions
-│   ├── utils.ts       # Helper functions
-│   └── styles.css     # UI styling
+│   ├── app.tsx                    # React chat UI component
+│   ├── client.tsx                 # Client-side entry point
+│   ├── server.ts                  # Chat agent implementation (Durable Object)
+│   ├── tools.ts                   # AI tool definitions for task management
+│   ├── utils.ts                   # Helper functions (task parsing, date calculations)
+│   ├── workflows/
+│   │   └── task-reminder-workflow.ts  # Cloudflare Workflows for reminders
+│   ├── components/                # React UI components
+│   │   ├── avatar/
+│   │   ├── button/
+│   │   ├── card/
+│   │   ├── input/
+│   │   ├── textarea/
+│   │   └── ...
+│   ├── hooks/                     # React hooks
+│   ├── providers/                 # React context providers
+│   └── styles.css                 # Global styles
+├── public/                        # Static assets
+├── tests/                         # Test files
+├── wrangler.jsonc                 # Cloudflare Workers configuration
+├── vite.config.ts                 # Vite build configuration
+└── package.json                   # Dependencies and scripts
 ```
 
-## Customization Guide
+## Usage
 
-### Adding New Tools
+### Starting a Conversation
 
-Add new tools in `tools.ts` using the tool builder:
+Once the application is running, you can interact with the Task Reminder Agent through natural language. The agent understands various commands and questions about task management.
 
-```ts
-// Example of a tool that requires confirmation
-const searchDatabase = tool({
-  description: "Search the database for user records",
-  parameters: z.object({
-    query: z.string(),
-    limit: z.number().optional()
-  })
-  // No execute function = requires confirmation
-});
+### Adding Tasks
 
-// Example of an auto-executing tool
-const getCurrentTime = tool({
-  description: "Get current server time",
-  parameters: z.object({}),
-  execute: async () => new Date().toISOString()
-});
+Create recurring tasks with flexible frequencies:
 
-// Scheduling tool implementation
-const scheduleTask = tool({
-  description:
-    "schedule a task to be executed at a later time. 'when' can be a date, a delay in seconds, or a cron pattern.",
-  parameters: z.object({
-    type: z.enum(["scheduled", "delayed", "cron"]),
-    when: z.union([z.number(), z.string()]),
-    payload: z.string()
-  }),
-  execute: async ({ type, when, payload }) => {
-    // ... see the implementation in tools.ts
-  }
-});
-```
+- "Add a task to water plants every 7 days"
+- "Remind me to review my budget every 2 weeks"
+- "Create a task to drink water every hour"
+- "Add blink to the list, frequency every second"
 
-To handle tool confirmations, add execution functions to the `executions` object:
+Supported frequency formats:
+- Seconds: "1 second", "30 seconds"
+- Minutes: "1 minute", "30 minutes"
+- Hours: "1 hour", "2 hours"
+- Days: "1 day", "7 days"
+- Weeks: "1 week", "2 weeks"
+- Months: "1 month", "3 months"
+
+You can also use "every X [unit]" format (e.g., "every second", "every 2 days").
+
+### Checking Due Tasks
+
+Ask what tasks are currently due:
+
+- "What tasks are due?"
+- "What do I need to do?"
+- "Show me what's overdue"
+
+### Listing All Tasks
+
+View all your tasks:
+
+- "Show me all my tasks"
+- "List all tasks"
+- "What tasks do I have?"
+
+### Marking Tasks Complete
+
+When you complete a task, mark it as done:
+
+- "Mark task [taskId] as complete"
+- "I finished watering the plants" (the agent will help identify the task)
+
+### Deleting Tasks
+
+Remove tasks you no longer need:
+
+- "Delete task [taskId]"
+- "Remove the plant watering task"
+
+### Clearing All Tasks
+
+Start fresh by clearing all tasks:
+
+- "Clear all tasks"
+- "Delete all my tasks"
+- "Remove everything"
+
+## How It Works
+
+### Task Scheduling
+
+Tasks are stored in the agent's state (Durable Object) with:
+- Unique ID
+- Task name/description
+- Frequency (parsed and validated)
+- Creation timestamp
+- Last completion timestamp (optional)
+
+### Automatic Checking
+
+A cron job runs every 30 minutes (`*/30 * * * *`) to check for due tasks. When tasks become due:
+1. The system identifies all due tasks
+2. Creates a batch reminder workflow
+3. The workflow processes each task individually
+4. Reminders are sent as messages in the chat
+
+### Reminder Escalation
+
+The reminder system uses a multi-level escalation:
+
+1. **Initial Reminder**: Sent when a task first becomes due
+2. **Follow-up Reminder**: Sent 24 hours later if the task is still not completed
+3. **Escalation Reminder**: Sent 48 hours after follow-up if still not completed
+
+Each reminder level uses different messaging to emphasize urgency.
+
+### Task Due Calculation
+
+A task is considered "due" when:
+- The time since last completion (or creation if never completed) exceeds the task's frequency
+- For example, a task with frequency "7 days" becomes due 7 days after creation or last completion
+
+## Available Tools
+
+The agent has access to the following tools (all execute automatically without confirmation):
+
+1. **addTask**: Create a new periodic task
+   - Parameters: `name` (string), `frequency` (string)
+   - Returns: Success status and task details
+
+2. **listTasks**: List all tasks
+   - Parameters: None
+   - Returns: Array of all tasks with their status
+
+3. **checkDueTasks**: Check which tasks are currently due
+   - Parameters: None
+   - Returns: Array of due tasks with overdue information
+
+4. **markTaskComplete**: Mark a task as completed
+   - Parameters: `taskId` (string)
+   - Returns: Success status and updated task
+
+5. **deleteTask**: Remove a task
+   - Parameters: `taskId` (string)
+   - Returns: Success status and deleted task ID
+
+6. **clearAllTasks**: Remove all tasks
+   - Parameters: None
+   - Returns: Count of cleared tasks
+
+## Customization
+
+### Changing the AI Model
+
+The default model is `@cf/meta/llama-3.3-70b-instruct-fp8-fast`. To change it, edit `src/server.ts`:
 
 ```typescript
-export const executions = {
-  searchDatabase: async ({
-    query,
-    limit
-  }: {
-    query: string;
-    limit?: number;
-  }) => {
-    // Implementation for when the tool is confirmed
-    const results = await db.search(query, limit);
-    return results;
-  }
-  // Add more execution handlers for other tools that require confirmation
+const model = workersai("@cf/your-model-name" as Parameters<typeof workersai>[0]);
+```
+
+Available models can be found in the Cloudflare Workers AI documentation.
+
+### Modifying Task Check Frequency
+
+Change the cron schedule in `src/server.ts`:
+
+```typescript
+this.schedule("*/30 * * * *", "checkAndRemindTasks", {});
+```
+
+Use standard cron syntax. For example:
+- `*/15 * * * *` - Every 15 minutes
+- `0 * * * *` - Every hour
+- `0 */2 * * *` - Every 2 hours
+
+### Customizing Reminder Messages
+
+Edit the reminder text in `src/workflows/task-reminder-workflow.ts`:
+
+```typescript
+if (reminderLevel === 'initial') {
+  reminderText = `Your custom message: "${taskName}" is due.`;
+}
+```
+
+### UI Customization
+
+- **Theme Colors**: Modify `src/styles.css` for color scheme changes
+- **Components**: Edit components in `src/components/`
+- **Layout**: Modify `src/app.tsx` for layout changes
+
+## Development
+
+### Available Scripts
+
+- `npm start`: Start development server
+- `npm run deploy`: Build and deploy to Cloudflare
+- `npm test`: Run tests
+- `npm run types`: Generate TypeScript types for Cloudflare bindings
+- `npm run format`: Format code with Prettier
+- `npm run check`: Run linting and type checking
+
+### Testing
+
+Run the test suite:
+
+```bash
+npm test
+```
+
+### Code Quality
+
+The project uses:
+- **Biome**: Linting and formatting
+- **TypeScript**: Type checking
+- **Prettier**: Code formatting
+
+Run checks:
+
+```bash
+npm run check
+```
+
+## Troubleshooting
+
+### AI Configuration Error
+
+If you see an "AI Configuration Error" banner:
+- Ensure your Cloudflare account has Workers AI enabled
+- Check that the AI binding is correctly configured in `wrangler.jsonc`
+- Verify your account has access to the selected model
+
+### Tasks Not Being Reminded
+
+- Check that the cron schedule is running (check logs)
+- Verify tasks are being saved to state correctly
+- Ensure the workflow bindings are configured in `wrangler.jsonc`
+- Check that tasks have valid frequency formats
+
+### State Not Persisting
+
+- Verify Durable Objects migrations are applied
+- Check that `wrangler.jsonc` has the correct Durable Object configuration
+- Ensure you're using the same agent instance (same agent name)
+
+### Build Errors
+
+- Run `npm run types` to regenerate type definitions
+- Clear `node_modules` and reinstall: `rm -rf node_modules && npm install`
+- Check Node.js version (requires 18+)
+
+## API Reference
+
+### Internal Endpoints
+
+The agent exposes internal endpoints for workflow communication:
+
+- `POST /internal/add-reminder`: Add a reminder message to the chat
+- `GET /internal/check-task/:taskId`: Check if a task is still due
+
+These endpoints are used by workflows and should not be called directly.
+
+### Agent State
+
+The agent state structure:
+
+```typescript
+type AgentState = {
+  tasks: Task[];
+};
+
+type Task = {
+  id: string;
+  name: string;
+  frequency: string;
+  createdAt: Date;
+  lastCompleted?: Date;
 };
 ```
 
-Tools can be configured in two ways:
-
-1. With an `execute` function for automatic execution
-2. Without an `execute` function, requiring confirmation and using the `executions` object to handle the confirmed action. NOTE: The keys in `executions` should match `toolsRequiringConfirmation` in `app.tsx`.
-
-### Use a different AI model provider
-
-The starting [`server.ts`](https://github.com/cloudflare/agents-starter/blob/main/src/server.ts) implementation uses the [`ai-sdk`](https://sdk.vercel.ai/docs/introduction) and the [OpenAI provider](https://sdk.vercel.ai/providers/ai-sdk-providers/openai), but you can use any AI model provider by:
-
-1. Installing an alternative AI provider for the `ai-sdk`, such as the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai) or [`anthropic`](https://sdk.vercel.ai/providers/ai-sdk-providers/anthropic) provider:
-2. Replacing the AI SDK with the [OpenAI SDK](https://github.com/openai/openai-node)
-3. Using the Cloudflare [Workers AI + AI Gateway](https://developers.cloudflare.com/ai-gateway/providers/workersai/#workers-binding) binding API directly
-
-For example, to use the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai), install the package:
-
-```sh
-npm install workers-ai-provider
-```
-
-Add an `ai` binding to `wrangler.jsonc`:
-
-```jsonc
-// rest of file
-  "ai": {
-    "binding": "AI"
-  }
-// rest of file
-```
-
-Replace the `@ai-sdk/openai` import and usage with the `workers-ai-provider`:
-
-```diff
-// server.ts
-// Change the imports
-- import { openai } from "@ai-sdk/openai";
-+ import { createWorkersAI } from 'workers-ai-provider';
-
-// Create a Workers AI instance
-+ const workersai = createWorkersAI({ binding: env.AI });
-
-// Use it when calling the streamText method (or other methods)
-// from the ai-sdk
-- const model = openai("gpt-4o-2024-11-20");
-+ const model = workersai("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b")
-```
-
-Commit your changes and then run the `agents-starter` as per the rest of this README.
-
-### Modifying the UI
-
-The chat interface is built with React and can be customized in `app.tsx`:
-
-- Modify the theme colors in `styles.css`
-- Add new UI components in the chat container
-- Customize message rendering and tool confirmation dialogs
-- Add new controls to the header
-
-### Example Use Cases
-
-1. **Customer Support Agent**
-   - Add tools for:
-     - Ticket creation/lookup
-     - Order status checking
-     - Product recommendations
-     - FAQ database search
-
-2. **Development Assistant**
-   - Integrate tools for:
-     - Code linting
-     - Git operations
-     - Documentation search
-     - Dependency checking
-
-3. **Data Analysis Assistant**
-   - Build tools for:
-     - Database querying
-     - Data visualization
-     - Statistical analysis
-     - Report generation
-
-4. **Personal Productivity Assistant**
-   - Implement tools for:
-     - Task scheduling with flexible timing options
-     - One-time, delayed, and recurring task management
-     - Task tracking with reminders
-     - Email drafting
-     - Note taking
-
-5. **Scheduling Assistant**
-   - Build tools for:
-     - One-time event scheduling using specific dates
-     - Delayed task execution (e.g., "remind me in 30 minutes")
-     - Recurring tasks using cron patterns
-     - Task payload management
-     - Flexible scheduling patterns
-
-Each use case can be implemented by:
-
-1. Adding relevant tools in `tools.ts`
-2. Customizing the UI for specific interactions
-3. Extending the agent's capabilities in `server.ts`
-4. Adding any necessary external API integrations
-
 ## Learn More
 
-- [`agents`](https://github.com/cloudflare/agents/blob/main/packages/agents/README.md)
 - [Cloudflare Agents Documentation](https://developers.cloudflare.com/agents/)
 - [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
+- [Workers AI Documentation](https://developers.cloudflare.com/workers-ai/)
+- [Cloudflare Workflows Documentation](https://developers.cloudflare.com/workflows/)
+- [Durable Objects Documentation](https://developers.cloudflare.com/durable-objects/)
 
 ## License
 

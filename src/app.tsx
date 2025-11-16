@@ -28,9 +28,7 @@ import {
 
 // List of tools that require human confirmation
 // NOTE: this should match the tools that don't have execute functions in tools.ts
-const toolsRequiringConfirmation: (keyof typeof tools)[] = [
-  "getWeatherInformation"
-];
+const toolsRequiringConfirmation: (keyof typeof tools)[] = [];
 
 export default function Chat() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -137,7 +135,7 @@ export default function Chat() {
 
   return (
     <div className="h-[100vh] w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
-      <HasOpenAIKey />
+      <HasAIConfig />
       <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
         <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 flex items-center gap-3 sticky top-0 z-10">
           <div className="flex items-center justify-center h-8 w-8">
@@ -159,7 +157,7 @@ export default function Chat() {
           </div>
 
           <div className="flex-1">
-            <h2 className="font-semibold text-base">AI Chat Agent</h2>
+            <h2 className="font-semibold text-base">Task Reminder Agent</h2>
           </div>
 
           <div className="flex items-center gap-2 mr-2">
@@ -186,7 +184,16 @@ export default function Chat() {
             size="md"
             shape="square"
             className="rounded-full h-9 w-9"
-            onClick={clearHistory}
+            onClick={async () => {
+              // Clear chat history
+              clearHistory();
+              // Also clear all tasks by resetting agent state
+              try {
+                await agent.setState({ tasks: [] });
+              } catch (error) {
+                console.error("Failed to clear tasks:", error);
+              }
+            }}
           >
             <Trash size={20} />
           </Button>
@@ -201,7 +208,9 @@ export default function Chat() {
                   <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
                     <Robot size={24} />
                   </div>
-                  <h3 className="font-semibold text-lg">Welcome to AI Chat</h3>
+                  <h3 className="font-semibold text-lg">
+                    Welcome to Task Reminder Agent
+                  </h3>
                   <p className="text-muted-foreground text-sm">
                     Start a conversation with your AI assistant. Try asking
                     about:
@@ -209,11 +218,18 @@ export default function Chat() {
                   <ul className="text-sm text-left space-y-2">
                     <li className="flex items-center gap-2">
                       <span className="text-[#F48120]">•</span>
-                      <span>Weather information for any city</span>
+                      <span>
+                        Add a recurring task (e.g., "Remind me to water plants
+                        every 7 days")
+                      </span>
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="text-[#F48120]">•</span>
-                      <span>Local time in different locations</span>
+                      <span>Check what tasks are due</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-[#F48120]">•</span>
+                      <span>List all your tasks</span>
                     </li>
                   </ul>
                 </div>
@@ -259,25 +275,11 @@ export default function Chat() {
                                     isUser
                                       ? "rounded-br-none"
                                       : "rounded-bl-none border-assistant-border"
-                                  } ${
-                                    part.text.startsWith("scheduled message")
-                                      ? "border-accent/50"
-                                      : ""
                                   } relative`}
                                 >
-                                  {part.text.startsWith(
-                                    "scheduled message"
-                                  ) && (
-                                    <span className="absolute -top-3 -left-2 text-base">
-                                      🕒
-                                    </span>
-                                  )}
                                   <MemoizedMarkdown
                                     id={`${m.id}-${i}`}
-                                    content={part.text.replace(
-                                      /^scheduled message: /,
-                                      ""
-                                    )}
+                                    content={part.text}
                                   />
                                 </Card>
                                 <p
@@ -308,6 +310,12 @@ export default function Chat() {
 
                             // Skip rendering the card in debug mode
                             if (showDebug) return null;
+
+                            // Hide tool invocation cards for auto-executing tools (no confirmation needed)
+                            // Only show them if they require user confirmation
+                            if (!needsConfirmation) {
+                              return null;
+                            }
 
                             return (
                               <ToolInvocationCard
@@ -419,14 +427,14 @@ export default function Chat() {
   );
 }
 
-const hasOpenAiKeyPromise = fetch("/check-open-ai-key").then((res) =>
-  res.json<{ success: boolean }>()
+const hasAIConfigPromise = fetch("/check-ai-config").then((res) =>
+  res.json<{ success: boolean; provider?: string; model?: string }>()
 );
 
-function HasOpenAIKey() {
-  const hasOpenAiKey = use(hasOpenAiKeyPromise);
+function HasAIConfig() {
+  const aiConfig = use(hasAIConfigPromise);
 
-  if (!hasOpenAiKey.success) {
+  if (!aiConfig.success) {
     return (
       <div className="fixed top-0 left-0 right-0 z-50 bg-red-500/10 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto p-4">
@@ -452,36 +460,15 @@ function HasOpenAIKey() {
               </div>
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">
-                  OpenAI API Key Not Configured
+                  AI Configuration Error
                 </h3>
                 <p className="text-neutral-600 dark:text-neutral-300 mb-1">
                   Requests to the API, including from the frontend UI, will not
-                  work until an OpenAI API key is configured.
+                  work until AI is properly configured.
                 </p>
                 <p className="text-neutral-600 dark:text-neutral-300">
-                  Please configure an OpenAI API key by setting a{" "}
-                  <a
-                    href="https://developers.cloudflare.com/workers/configuration/secrets/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-red-600 dark:text-red-400"
-                  >
-                    secret
-                  </a>{" "}
-                  named{" "}
-                  <code className="bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-red-600 dark:text-red-400 font-mono text-sm">
-                    OPENAI_API_KEY
-                  </code>
-                  . <br />
-                  You can also use a different model provider by following these{" "}
-                  <a
-                    href="https://github.com/cloudflare/agents-starter?tab=readme-ov-file#use-a-different-ai-model-provider"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-red-600 dark:text-red-400"
-                  >
-                    instructions.
-                  </a>
+                  Please ensure your Cloudflare Workers AI binding is properly
+                  configured.
                 </p>
               </div>
             </div>

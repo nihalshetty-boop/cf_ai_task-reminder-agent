@@ -7,127 +7,326 @@ import { z } from "zod/v3";
 
 import type { Chat } from "./server";
 import { getCurrentAgent } from "agents";
-import { scheduleSchema } from "agents/schedule";
+import { generateId } from "ai";
+import {
+  type Task,
+  parseFrequencyToDays,
+  isTaskDue,
+  getDaysOverdue
+} from "./utils";
 
-/**
- * Weather information tool that requires human confirmation
- * When invoked, this will present a confirmation dialog to the user
- */
-const getWeatherInformation = tool({
-  description: "show the weather in a given city to the user",
-  inputSchema: z.object({ city: z.string() })
-  // Omitting execute function makes this tool require human confirmation
-});
+type AgentState = {
+  tasks: Task[];
+};
 
-/**
- * Local time tool that executes automatically
- * Since it includes an execute function, it will run without user confirmation
- * This is suitable for low-risk operations that don't need oversight
- */
-const getLocalTime = tool({
-  description: "get the local time for a specified location",
-  inputSchema: z.object({ location: z.string() }),
-  execute: async ({ location }) => {
-    console.log(`Getting local time for ${location}`);
-    return "10am";
+// 1. addTask tool
+export const addTask = tool({
+  description:
+    "Add a new periodic task that needs to be completed at regular intervals",
+  inputSchema: z.object({
+    name: z.string().describe("The name or description of the task"),
+    frequency: z
+      .string()
+      .describe(
+        "How often the task should be completed (e.g., '1 second', '1 minute', '30 minutes', '2 hours', '7 days', '2 weeks', '1 month', or 'every X [unit]')"
+      )
+  }),
+  execute: async ({ name, frequency }: { name: string; frequency: string }) => {
+    const context = getCurrentAgent<Chat>();
+    const agent = context.agent;
+
+    if (!agent) {
+      throw new Error("Agent not available");
+    }
+
+    // Validate frequency format
+    parseFrequencyToDays(frequency); // Will throw if invalid
+
+    const newTask: Task = {
+      id: generateId(),
+      name,
+      frequency,
+      createdAt: new Date(),
+      lastCompleted: undefined
+    };
+
+    // Get current tasks from state - read fresh state each time
+    const currentState = (agent.state as AgentState) || { tasks: [] };
+    // Deserialize dates from strings (state persistence converts Dates to strings)
+    const tasks: Task[] = (currentState.tasks || []).map((task) => ({
+      ...task,
+      createdAt: task.createdAt instanceof Date ? task.createdAt : new Date(task.createdAt),
+      lastCompleted: task.lastCompleted 
+        ? (task.lastCompleted instanceof Date ? task.lastCompleted : new Date(task.lastCompleted))
+        : undefined
+    }));
+
+    // Add new task
+    const updatedTasks = [...tasks, newTask];
+
+    // Save to state - preserve all existing state properties
+    await agent.setState({
+      ...currentState,
+      tasks: updatedTasks
+    } as AgentState);
+
+    return {
+      success: true,
+      task: newTask,
+      message: `Task "${name}" added with frequency ${frequency}`
+    };
   }
 });
 
-const scheduleTask = tool({
-  description: "A tool to schedule a task to be executed at a later time",
-  inputSchema: scheduleSchema,
-  execute: async ({ when, description }) => {
-    // we can now read the agent context from the ALS store
-    const { agent } = getCurrentAgent<Chat>();
+// 2. markTaskComplete tool
+export const markTaskComplete = tool({
+  description: "Mark a task as completed, updating its lastCompleted date",
+  inputSchema: z.object({
+    taskId: z
+      .string()
+      .describe("The unique identifier of the task to mark as complete")
+  }),
+  execute: async ({ taskId }: { taskId: string }) => {
+    const context = getCurrentAgent<Chat>();
+    const agent = context.agent;
 
-    function throwError(msg: string): string {
-      throw new Error(msg);
+    if (!agent) {
+      throw new Error("Agent not available");
     }
-    if (when.type === "no-schedule") {
-      return "Not a valid schedule input";
+
+    const currentState = (agent.state as AgentState) || { tasks: [] };
+    // Deserialize dates from strings (state persistence converts Dates to strings)
+    const tasks: Task[] = (currentState.tasks || []).map((task) => ({
+      ...task,
+      createdAt: task.createdAt instanceof Date ? task.createdAt : new Date(task.createdAt),
+      lastCompleted: task.lastCompleted 
+        ? (task.lastCompleted instanceof Date ? task.lastCompleted : new Date(task.lastCompleted))
+        : undefined
+    }));
+
+    const taskIndex = tasks.findIndex((t) => t.id === taskId);
+    if (taskIndex === -1) {
+      return {
+        success: false,
+        message: `Task with ID ${taskId} not found`
+      };
     }
-    const input =
-      when.type === "scheduled"
-        ? when.date // scheduled
-        : when.type === "delayed"
-          ? when.delayInSeconds // delayed
-          : when.type === "cron"
-            ? when.cron // cron
-            : throwError("not a valid schedule input");
-    try {
-      agent!.schedule(input!, "executeTask", description);
-    } catch (error) {
-      console.error("error scheduling task", error);
-      return `Error scheduling task: ${error}`;
-    }
-    return `Task scheduled for type "${when.type}" : ${input}`;
+
+    // Update task
+    const updatedTasks = [...tasks];
+    updatedTasks[taskIndex] = {
+      ...updatedTasks[taskIndex],
+      lastCompleted: new Date()
+    };
+
+    // Save to state
+    await agent.setState({
+      ...currentState,
+      tasks: updatedTasks
+    } as AgentState);
+
+    return {
+      success: true,
+      task: updatedTasks[taskIndex],
+      message: `Task "${updatedTasks[taskIndex].name}" marked as completed`
+    };
   }
 });
 
-/**
- * Tool to list all scheduled tasks
- * This executes automatically without requiring human confirmation
- */
-const getScheduledTasks = tool({
-  description: "List all tasks that have been scheduled",
+// 3. listTasks tool
+export const listTasks = tool({
+  description: "List all tasks that have been created",
   inputSchema: z.object({}),
   execute: async () => {
-    const { agent } = getCurrentAgent<Chat>();
-
     try {
-      const tasks = agent!.getSchedules();
-      if (!tasks || tasks.length === 0) {
-        return "No scheduled tasks found.";
+      const context = getCurrentAgent<Chat>();
+      const agent = context.agent;
+
+      if (!agent) {
+        return {
+          success: false,
+          error: "Agent not available",
+          tasks: [],
+          count: 0
+        };
       }
-      return tasks;
+
+      const currentState = (agent.state as AgentState) || { tasks: [] };
+      // Deserialize dates from strings (state persistence converts Dates to strings)
+      const tasks: Task[] = (currentState.tasks || []).map((task) => ({
+        ...task,
+        createdAt: task.createdAt instanceof Date ? task.createdAt : new Date(task.createdAt),
+        lastCompleted: task.lastCompleted 
+          ? (task.lastCompleted instanceof Date ? task.lastCompleted : new Date(task.lastCompleted))
+          : undefined
+      }));
+
+      return {
+        success: true,
+        tasks: tasks.map((task) => ({
+          id: task.id,
+          name: task.name,
+          frequency: task.frequency,
+          lastCompleted: task.lastCompleted?.toISOString(),
+          createdAt: task.createdAt.toISOString(),
+          isDue: isTaskDue(task)
+        })),
+        count: tasks.length
+      };
     } catch (error) {
-      console.error("Error listing scheduled tasks", error);
-      return `Error listing scheduled tasks: ${error}`;
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error occurred",
+        tasks: [],
+        count: 0
+      };
     }
   }
 });
 
-/**
- * Tool to cancel a scheduled task by its ID
- * This executes automatically without requiring human confirmation
- */
-const cancelScheduledTask = tool({
-  description: "Cancel a scheduled task using its ID",
-  inputSchema: z.object({
-    taskId: z.string().describe("The ID of the task to cancel")
-  }),
-  execute: async ({ taskId }) => {
-    const { agent } = getCurrentAgent<Chat>();
+// 4. checkDueTasks tool
+export const checkDueTasks = tool({
+  description:
+    "Check which tasks are currently due based on their frequency and lastCompleted date",
+  inputSchema: z.object({}),
+  execute: async () => {
     try {
-      await agent!.cancelSchedule(taskId);
-      return `Task ${taskId} has been successfully canceled.`;
+      const context = getCurrentAgent<Chat>();
+      const agent = context.agent;
+
+      if (!agent) {
+        return {
+          success: false,
+          error: "Agent not available",
+          dueTasks: [],
+          count: 0
+        };
+      }
+
+      const currentState = (agent.state as AgentState) || { tasks: [] };
+      // Deserialize dates from strings (state persistence converts Dates to strings)
+      const tasks: Task[] = (currentState.tasks || []).map((task) => ({
+        ...task,
+        createdAt: task.createdAt instanceof Date ? task.createdAt : new Date(task.createdAt),
+        lastCompleted: task.lastCompleted 
+          ? (task.lastCompleted instanceof Date ? task.lastCompleted : new Date(task.lastCompleted))
+          : undefined
+      }));
+
+      const dueTasks = tasks.filter((task) => isTaskDue(task));
+
+      return {
+        success: true,
+        dueTasks: dueTasks.map((task) => ({
+          id: task.id,
+          name: task.name,
+          frequency: task.frequency,
+          lastCompleted: task.lastCompleted?.toISOString(),
+          createdAt: task.createdAt.toISOString(),
+          daysOverdue: getDaysOverdue(task)
+        })),
+        count: dueTasks.length
+      };
     } catch (error) {
-      console.error("Error canceling scheduled task", error);
-      return `Error canceling task ${taskId}: ${error}`;
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error occurred",
+        dueTasks: [],
+        count: 0
+      };
     }
   }
 });
 
-/**
- * Export all available tools
- * These will be provided to the AI model to describe available capabilities
- */
+// 5. deleteTask tool
+export const deleteTask = tool({
+  description: "Remove a task from the task list",
+  inputSchema: z.object({
+    taskId: z.string().describe("The unique identifier of the task to delete")
+  }),
+  execute: async ({ taskId }: { taskId: string }) => {
+    const context = getCurrentAgent<Chat>();
+    const agent = context.agent;
+
+    if (!agent) {
+      throw new Error("Agent not available");
+    }
+
+    const currentState = (agent.state as AgentState) || { tasks: [] };
+    // Deserialize dates from strings (state persistence converts Dates to strings)
+    const tasks: Task[] = (currentState.tasks || []).map((task) => ({
+      ...task,
+      createdAt: task.createdAt instanceof Date ? task.createdAt : new Date(task.createdAt),
+      lastCompleted: task.lastCompleted 
+        ? (task.lastCompleted instanceof Date ? task.lastCompleted : new Date(task.lastCompleted))
+        : undefined
+    }));
+
+    const taskIndex = tasks.findIndex((t) => t.id === taskId);
+    if (taskIndex === -1) {
+      return {
+        success: false,
+        message: `Task with ID ${taskId} not found`
+      };
+    }
+
+    const deletedTask = tasks[taskIndex];
+
+    // Remove task
+    const updatedTasks = tasks.filter((t) => t.id !== taskId);
+
+    // Save to state
+    await agent.setState({
+      ...currentState,
+      tasks: updatedTasks
+    } as AgentState);
+
+    return {
+      success: true,
+      message: `Task "${deletedTask.name}" has been deleted`,
+      deletedTaskId: taskId
+    };
+  }
+});
+
+// 6. clearAllTasks tool
+export const clearAllTasks = tool({
+  description: "Remove all tasks from the task list",
+  inputSchema: z.object({}),
+  execute: async () => {
+    const context = getCurrentAgent<Chat>();
+    const agent = context.agent;
+
+    if (!agent) {
+      throw new Error("Agent not available");
+    }
+
+    const currentState = (agent.state as AgentState) || { tasks: [] };
+    const taskCount = currentState.tasks?.length || 0;
+
+    // Clear all tasks
+    await agent.setState({
+      ...currentState,
+      tasks: []
+    } as AgentState);
+
+    return {
+      success: true,
+      message: `All ${taskCount} task${taskCount !== 1 ? "s" : ""} have been cleared`,
+      clearedCount: taskCount
+    };
+  }
+});
+
+// Export all tools together
 export const tools = {
-  getWeatherInformation,
-  getLocalTime,
-  scheduleTask,
-  getScheduledTasks,
-  cancelScheduledTask
+  addTask,
+  markTaskComplete,
+  listTasks,
+  checkDueTasks,
+  deleteTask,
+  clearAllTasks
 } satisfies ToolSet;
 
-/**
- * Implementation of confirmation-required tools
- * This object contains the actual logic for tools that need human approval
- * Each function here corresponds to a tool above that doesn't have an execute function
- */
-export const executions = {
-  getWeatherInformation: async ({ city }: { city: string }) => {
-    console.log(`Getting weather information for ${city}`);
-    return `The weather in ${city} is sunny`;
-  }
-};
+// No executions needed since all tools have execute functions
+export const executions = {};
