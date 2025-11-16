@@ -7,13 +7,9 @@ Build a type of AI-powered application on Cloudflare. An AI-powered application 
 LLM (recommend using Llama 3.3 on Workers AI), or an external LLM of your choice
 Workflow / coordination (recommend using Workflows, Workers or Durable Objects)
 User input via chat or voice (recommend using Pages or Realtime)
-Memory or state
+Memory or state. For this project, I have the following idea: There are tons of things I do periodically (wash my car, vacuum, do laundry, clean bathroom, cut my hair, replace toothbrush etc.) and I don't want to think about what is the last time I did a particular task. This agent can periodically remind me of any particular task from the list which is due based on it's mentioned frequency. Help me build this but I will be making the code changes. You will only tell me what to do. DO NOT MAKE FILE CHANGES YOURSELF.
 
-For this project, I have the following idea: There are tons of things I do periodically (wash my car, vacuum, do laundry, clean bathroom, cut my hair, replace toothbrush etc.) and I don't want to think about what is the last time I did a particular task. This agent can periodically remind me of any particular task from the list which is due based on it's mentioned frequency.
-
-Help me build this but I will be making the code changes. You will only tell me what to do. DO NOT MAKE FILE CHANGES YOURSELF.
-
-I want to use llama 3.3 instead of an openai model.
+- I want to use llama 3.3 instead of an openai model.
 
 - Can you go through my project and check for formatting, any issues, and mismatches?
 
